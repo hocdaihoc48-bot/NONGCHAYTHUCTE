@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Thí nghiệm Nóng chảy: Đã Sửa Lỗi</title>
+<style>
+  :root { --bg: #2c3e50; --panel: #34495e; --accent: #27ae60; --fire: #e74c3c; }
+  body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #ecf0f1; margin: 0; height: 100vh; display: flex; overflow: hidden; }
+
+  #layout { display: flex; width: 100%; height: 100%; }
+  
+  /* CONTROLS */
+  #controls { width: 280px; background: var(--panel); padding: 20px; display: flex; flex-direction: column; gap: 20px; box-shadow: 2px 0 10px rgba(0,0,0,0.3); z-index: 10; }
+  .group { background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; }
+  h3 { margin: 0 0 10px 0; color: var(--accent); font-size: 1.1rem; border-bottom: 2px solid var(--accent); padding-bottom: 5px; }
+  
+  .mat-btn { width: 100%; padding: 15px; margin-bottom: 8px; border: 2px solid transparent; background: #455a64; color: #fff; cursor: pointer; border-radius: 6px; font-weight: bold; display: flex; align-items: center; gap: 10px; transition: 0.2s; }
+  .mat-btn:hover { background: #546e7a; }
+  .mat-btn.active { border-color: var(--accent); background: rgba(39, 174, 96, 0.2); }
+  .mat-btn img { font-size: 1.5rem; }
+
+  input[type=range] { width: 100%; margin-top: 10px; cursor: pointer; }
+  
+  #reset-btn { margin-top: auto; padding: 15px; background: #c0392b; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+  #reset-btn:hover { background: #e74c3c; }
+
+  /* VISUAL VIEW */
+  #sim-view { flex: 1; position: relative; background: radial-gradient(circle at center, #3a5369 0%, #2c3e50 100%); border-right: 1px solid #444; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 50px; overflow: hidden; }
+  #canvas-container { width: 100%; height: 100%; position: absolute; top:0; left:0; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  /* Heater UI */
+  .heater-base { width: 300px; height: 20px; background: #7f8c8d; border-radius: 10px; position: absolute; bottom: 80px; z-index: 2; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+  .heater-coil { width: 260px; height: 10px; background: #2c3e50; margin: -5px auto 0; border-radius: 5px; transition: 0.3s; }
+  .heater-glow { width: 280px; height: 40px; background: radial-gradient(ellipse at center, rgba(231, 76, 60, 0.8) 0%, transparent 70%); position: absolute; top: -30px; left: 10px; opacity: 0; transition: opacity 0.5s; filter: blur(5px); }
+  
+  /* Status Text Overlay */
+  #status-overlay { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 20px; font-weight: bold; font-size: 1.2rem; color: #f1c40f; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
+
+  /* DATA PANEL */
+  #data-panel { width: 350px; background: #222; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+  .thermometer-wrapper { display: flex; align-items: center; gap: 20px; background: #333; padding: 15px; border-radius: 10px; }
+  .temp-display { font-size: 2.5rem; font-weight: bold; font-family: monospace; color: #fff; width: 140px; text-align: right; }
+  #graph-wrapper { flex: 1; background: #1a1a1a; border: 1px solid #444; border-radius: 8px; position: relative; }
+  #graphCanvas { width: 100%; height: 100%; }
+  .axis-label { position: absolute; font-size: 0.8rem; color: #888; }
+</style>
+</head>
+<body>
+
+<div id="layout">
+  <div id="controls">
+    <h2>THÍ NGHIỆM ẢO</h2>
+    
+    <div class="group">
+      <h3>Chọn Vật Chất</h3>
+      <button class="mat-btn active" onclick="setMaterial('ice')">
+        <span>🧊</span>
+        <div>
+          <div>NƯỚC ĐÁ</div>
+          <div style="font-size:0.7rem; color:#ccc;">Chất rắn Kết Tinh</div>
+        </div>
+      </button>
+      <button class="mat-btn" onclick="setMaterial('wax')">
+        <span>🧀</span>
+        <div>
+          <div>SÁP NẾN</div>
+          <div style="font-size:0.7rem; color:#ccc;">Chất rắn Vô Định Hình</div>
+        </div>
+      </button>
+    </div>
+
+    <div class="group">
+      <h3>Nguồn Nhiệt</h3>
+      <label>Công suất: <span id="powerVal" style="color:var(--fire); font-weight:bold;">Tắt</span></label>
+      <input type="range" id="heaterSlider" min="0" max="100" value="0">
+    </div>
+
+    <button id="reset-btn" onclick="resetSim()">LÀM LẠI</button>
+  </div>
+
+  <div id="sim-view">
+    <div id="status-overlay">TRẠNG THÁI: ĐANG TAN CHẢY (0°C)</div>
+    <div id="canvas-container">
+      <canvas id="visualCanvas"></canvas>
+    </div>
+    <div class="heater-base">
+      <div class="heater-glow" id="glow"></div>
+      <div class="heater-coil" id="coil"></div>
+    </div>
+  </div>
+
+  <div id="data-panel">
+    <h3>NHIỆT KẾ</h3>
+    <div class="thermometer-wrapper">
+      <div class="temp-display" id="tempText">-10.0°C</div>
+    </div>
+    <h3>ĐỒ THỊ (T° / Thời gian)</h3>
+    <div id="graph-wrapper">
+      <canvas id="graphCanvas"></canvas>
+      <div class="axis-label" style="top:5px; left:5px;">Temp (°C)</div>
+      <div class="axis-label" style="bottom:5px; right:5px;">Time (s)</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const vCanvas = document.getElementById('visualCanvas');
+const vCtx = vCanvas.getContext('2d');
+const gCanvas = document.getElementById('graphCanvas');
+const gCtx = gCanvas.getContext('2d');
+const statusOverlay = document.getElementById('status-overlay');
+
+// Trạng thái vật lý
+let material = 'ice';
+let heaterPower = 0;
+let temp = -10; 
+let meltProgress = 0; // 0 -> 100%
+let time = 0;
+let history = []; 
+
+// CẤU HÌNH VẬT LÝ
+const PHYSICS = {
+  ice: {
+    startTemp: -10,
+    meltPoint: 0,
+    isCrystalline: true,
+    heatRateSolid: 0.1,  // Tốc độ nóng khi rắn
+    heatRateLiquid: 0.15, // Tốc độ nóng khi lỏng
+    meltRate: 0.3        // Tốc độ tan chảy (ẩn nhiệt)
+  },
+  wax: {
+    startTemp: 20,
+    meltStart: 40,
+    meltEnd: 80,
+    isCrystalline: false,
+    heatRate: 0.08       // Tốc độ nóng đều
+  }
+};
+
+function resize() {
+  vCanvas.width = vCanvas.parentElement.offsetWidth;
+  vCanvas.height = vCanvas.parentElement.offsetHeight;
+  gCanvas.width = gCanvas.parentElement.offsetWidth;
+  gCanvas.height = gCanvas.parentElement.offsetHeight;
+}
+window.addEventListener('resize', resize);
+
+
+/* --- LOGIC VẬT LÝ ĐÃ SỬA LỖI --- */
+function updatePhysics() {
+  if (heaterPower > 0) {
+    const powerFactor = heaterPower / 50; // Hệ số công suất
+    const props = PHYSICS[material];
+
+    if (props.isCrystalline) {
+      // === LOGIC NƯỚC ĐÁ (KẾT TINH) ===
+      
+      // Giai đoạn 1: Dưới điểm nóng chảy
+      if (temp < props.meltPoint) {
+         temp += props.heatRateSolid * powerFactor;
+         statusOverlay.style.opacity = 0;
+         
+         // Fix lỗi vượt ngưỡng: Nếu cộng xong mà vượt quá 0, gán bằng 0 luôn
+         if (temp >= props.meltPoint) {
+             temp = props.meltPoint;
+         }
+      }
+      
+      // Giai đoạn 2: Tại điểm nóng chảy (QUAN TRỌNG NHẤT)
+      // Điều kiện: Nhiệt độ >= điểm nóng chảy VÀ chưa tan hết
+      else if (temp >= props.meltPoint && meltProgress < 100) {
+         // KHÓA NHIỆT ĐỘ: Ép cứng bằng 0
+         temp = props.meltPoint; 
+         
+         // Năng lượng dùng để tăng tiến trình tan chảy
+         meltProgress += props.meltRate * powerFactor;
+         
+         // Hiển thị trạng thái
+         statusOverlay.innerText = `ĐANG TAN CHẢY (ẨN NHIỆT): ${Math.floor(meltProgress)}%`;
+         statusOverlay.style.opacity = 1;
+
+         // Nếu tan xong (vượt 100%)
+         if (meltProgress >= 100) {
+             meltProgress = 100;
+             statusOverlay.style.opacity = 0;
+         }
+      }
+      
+      // Giai đoạn 3: Đã tan hết -> Tăng nhiệt tiếp
+      else if (meltProgress >= 100) {
+         temp += props.heatRateLiquid * powerFactor;
+      }
+    } 
+    else {
+      // === LOGIC SÁP (VÔ ĐỊNH HÌNH) ===
+      temp += props.heatRate * powerFactor;
+      statusOverlay.style.opacity = 0;
+
+      // Tính độ mềm
+      if (temp < props.meltStart) meltProgress = 0;
+      else if (temp > props.meltEnd) meltProgress = 100;
+      else meltProgress = ((temp - props.meltStart) / (props.meltEnd - props.meltStart)) * 100;
+    }
+  } else {
+    // Tự nguội
+    const target = (material === 'ice') ? -10 : 20;
+    if (temp > target) temp -= 0.1;
+  }
+
+  // Lưu lịch sử (cứ 5 frame lưu 1 lần)
+  if (time % 5 === 0) {
+    history.push(temp);
+    if (history.length > gCanvas.width) history.shift();
+  }
+  time++;
+}
+
+/* --- VẼ HÌNH ẢNH --- */
+function drawVisuals() {
+  vCtx.clearRect(0, 0, vCanvas.width, vCanvas.height);
+  const cx = vCanvas.width / 2;
+  const cy = vCanvas.height - 100;
+
+  if (material === 'ice') {
+    // Kích thước khối đá (nhỏ dần khi meltProgress tăng)
+    const size = 150 * (1 - meltProgress/100); 
+    
+    // 1. Vẽ vũng nước (Loang ra)
+    if (meltProgress > 0) {
+       vCtx.beginPath();
+       // Vũng nước to dần
+       const w = 150 + meltProgress * 1.5;
+       const h = meltProgress * 0.4;
+       vCtx.ellipse(cx, cy, w/2, h, 0, 0, Math.PI*2);
+       vCtx.fillStyle = "rgba(52, 152, 219, 0.6)";
+       vCtx.fill();
+    }
+
+    // 2. Vẽ cục đá (Nếu chưa tan hết)
+    if (size > 1) {
+       // Cục đá lơ lửng một chút hoặc chìm dần
+       const yPos = cy - size + (meltProgress * 0.2); 
+       
+       vCtx.save();
+       vCtx.translate(cx - size/2, yPos);
+       
+       // Thân đá
+       vCtx.fillStyle = "rgba(200, 240, 255, 0.9)";
+       vCtx.fillRect(0, 0, size, size);
+       vCtx.strokeStyle = "white";
+       vCtx.lineWidth = 2;
+       vCtx.strokeRect(0, 0, size, size);
+       
+       // Vân đá nứt
+       vCtx.beginPath();
+       vCtx.strokeStyle = "rgba(255,255,255,0.5)";
+       vCtx.moveTo(size*0.2, size*0.2); vCtx.lineTo(size*0.8, size*0.8);
+       vCtx.stroke();
+       
+       vCtx.restore();
+    }
+  } 
+  else {
+    // VẼ SÁP (Biến dạng dẻo)
+    const w = 100 + (meltProgress * 1.5); // Bè ra
+    const h = 120 - (meltProgress * 0.9); // Lùn xuống
+    const r = 10 + (meltProgress * 0.4); // Bo tròn nhiều hơn
+    
+    const x = cx - w/2;
+    const y = cy - h;
+
+    vCtx.beginPath();
+    vCtx.roundRect(x, y, w, h, r);
+    
+    // Gradient màu sáp
+    const grd = vCtx.createLinearGradient(x, y, x, y+h);
+    if(meltProgress < 50) {
+        grd.addColorStop(0, "#f1c40f"); grd.addColorStop(1, "#f39c12");
+    } else {
+        grd.addColorStop(0, "#e67e22"); grd.addColorStop(1, "#d35400");
+    }
+    vCtx.fillStyle = grd;
+    vCtx.fill();
+    
+    // Bóng láng
+    vCtx.fillStyle = "rgba(255,255,255,0.4)";
+    vCtx.beginPath();
+    vCtx.ellipse(cx, y+10, w/3, 5, 0, 0, Math.PI*2);
+    vCtx.fill();
+  }
+}
+
+/* --- VẼ ĐỒ THỊ --- */
+function drawGraph() {
+  gCtx.clearRect(0, 0, gCanvas.width, gCanvas.height);
+  
+  // Trục tham chiếu (0 độ)
+  let refY = mapY(0);
+  if (material === 'wax') refY = mapY(60); // Tham chiếu giữa
+  
+  gCtx.strokeStyle = "#444";
+  gCtx.setLineDash([5,5]);
+  gCtx.beginPath(); gCtx.moveTo(0, refY); gCtx.lineTo(gCanvas.width, refY); gCtx.stroke();
+  gCtx.setLineDash([]);
+
+  if (history.length < 2) return;
+
+  gCtx.beginPath();
+  gCtx.lineWidth = 3;
+  gCtx.strokeStyle = (material === 'ice') ? "#3498db" : "#f1c40f";
+
+  for(let i=0; i<history.length; i++) {
+     let x = i;
+     let y = mapY(history[i]);
+     if (i===0) gCtx.moveTo(x, y); else gCtx.lineTo(x, y);
+  }
+  gCtx.stroke();
+  
+  // Chấm điểm hiện tại
+  let lastY = mapY(temp);
+  gCtx.fillStyle = "white";
+  gCtx.beginPath(); gCtx.arc(history.length-1, lastY, 4, 0, Math.PI*2); gCtx.fill();
+}
+
+function mapY(t) {
+    const min = -20; const max = 100;
+    return gCanvas.height - ((t - min)/(max - min) * gCanvas.height);
+}
+
+/* --- UI CONTROLS --- */
+function loop() {
+  updatePhysics();
+  drawVisuals();
+  drawGraph();
+  
+  document.getElementById('tempText').innerText = temp.toFixed(1) + "°C";
+  
+  const glow = document.getElementById('glow');
+  const coil = document.getElementById('coil');
+  if (heaterPower > 0) {
+      glow.style.opacity = heaterPower/100;
+      coil.style.backgroundColor = "#e74c3c";
+  } else {
+      glow.style.opacity = 0;
+      coil.style.backgroundColor = "#2c3e50";
+  }
+  
+  requestAnimationFrame(loop);
+}
+
+const slider = document.getElementById('heaterSlider');
+const pVal = document.getElementById('powerVal');
+const btns = document.querySelectorAll('.mat-btn');
+
+slider.addEventListener('input', (e) => {
+    heaterPower = parseInt(e.target.value);
+    pVal.innerText = heaterPower > 0 ? heaterPower + "%" : "Tắt";
+});
+
+function setMaterial(m) {
+    material = m;
+    btns.forEach(b => b.classList.remove('active'));
+    if(m==='ice') btns[0].classList.add('active'); else btns[1].classList.add('active');
+    resetSim();
+}
+
+function resetSim() {
+    heaterPower = 0; slider.value = 0; pVal.innerText = "Tắt";
+    time = 0; history = []; meltProgress = 0;
+    temp = PHYSICS[material].startTemp;
+    statusOverlay.style.opacity = 0;
+}
+
+// Start
+resize();
+loop();
+</script>
+</body>
+</html>
